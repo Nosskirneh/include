@@ -5,7 +5,7 @@
  */
 
 #import <UIKit/UIScrollView.h>
-#import "SBIconScrollViewDelegate-Protocol.h"
+#import "SBIconScrollViewDelegate.h"
 @interface SBIconScrollView : UIScrollView
 {
 }

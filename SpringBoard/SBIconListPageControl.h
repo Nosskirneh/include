@@ -5,7 +5,7 @@
  */
 
 #import <UIKit/UIPageControl.h>
-#import "SBIconListPageControlDelegate-Protocol.h"
+#import "SBIconListPageControlDelegate.h"
 @class _UILegibilityImageSet;
 
 @interface SBIconListPageControl : UIPageControl
