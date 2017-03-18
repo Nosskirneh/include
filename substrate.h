@@ -87,13 +87,12 @@ void SubstrateMemoryRelease(SubstrateMemoryRef memory);
 
 #ifdef __ANDROID__
 #include <jni.h>
-_extern void MSJavaHookClassLoad(JNIEnv *jni, const char *name, void (*callback)(JNIEnv *, jclass, void *), void *data _default(NULL));
+_extern void MSJavaHookClassLoad(JNIEnv *jni, const char *name, void (*callback)(void *, JNIEnv *, jclass), void *data _default(NULL));
 _extern void MSJavaHookMethod(JNIEnv *jni, jclass _class, jmethodID methodID, void *function, void **result);
 _extern void MSJavaBlessClassLoader(JNIEnv *jni, jobject loader);
 
 typedef struct MSJavaObjectKey_ *MSJavaObjectKey;
 _extern MSJavaObjectKey MSJavaNewObjectKey();
-_extern void MSJavaDeleteObjectKey(MSJavaObjectKey key);
 _extern void *MSJavaGetObjectKey(JNIEnv *jni, jobject object, MSJavaObjectKey key);
 _extern void MSJavaSetObjectKey(JNIEnv *jni, jobject object, MSJavaObjectKey key, void *value, void (*clean)(void *, JNIEnv *, void *) _default(NULL), void *data _default(NULL));
 #endif
@@ -165,7 +164,11 @@ static inline void MSHookMessage(Class _class, SEL sel, Type_ *imp, Type_ **resu
 template <typename Type_>
 static inline Type_ &MSHookIvar(id self, const char *name) {
     Ivar ivar(class_getInstanceVariable(object_getClass(self), name));
-    void *pointer(ivar == NULL ? NULL : reinterpret_cast<char *>(self) + ivar_getOffset(ivar));
+    #if __has_feature(objc_arc)
+        void *pointer(ivar == NULL ? NULL : reinterpret_cast<char *>((__bridge void *)self) + ivar_getOffset(ivar));
+    #else
+        void *pointer(ivar == NULL ? NULL : reinterpret_cast<char *>(self) + ivar_getOffset(ivar));
+    #endif
     return *reinterpret_cast<Type_ *>(pointer);
 }
 
@@ -183,10 +186,6 @@ static inline Type_ &MSHookIvar(id self, const char *name) {
     class_addMethod($ ## _class, @selector(arg0:arg1:arg2:arg3:arg4:), (IMP) &$ ## _class ## $ ## arg0 ## $ ## arg1 ## $ ## arg2 ## $ ## arg3 ## $ ## arg4 ## $, type);
 #define MSAddMessage6(_class, type, arg0, arg1, arg2, arg3, arg4, arg5) \
     class_addMethod($ ## _class, @selector(arg0:arg1:arg2:arg3:arg4:arg5:), (IMP) &$ ## _class ## $ ## arg0 ## $ ## arg1 ## $ ## arg2 ## $ ## arg3 ## $ ## arg4 ## $ ## arg5 ## $, type);
-#define MSAddMessage7(_class, type, arg0, arg1, arg2, arg3, arg4, arg5, arg6) \
-    class_addMethod($ ## _class, @selector(arg0:arg1:arg2:arg3:arg4:arg5:arg6:), (IMP) &$ ## _class ## $ ## arg0 ## $ ## arg1 ## $ ## arg2 ## $ ## arg3 ## $ ## arg4 ## $ ## arg5 ## $ $$ arg6 ## $, type);
-#define MSAddMessage8(_class, type, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) \
-    class_addMethod($ ## _class, @selector(arg0:arg1:arg2:arg3:arg4:arg5:arg6:arg7:), (IMP) &$ ## _class ## $ ## arg0 ## $ ## arg1 ## $ ## arg2 ## $ ## arg3 ## $ ## arg4 ## $ ## arg5 ## $ $$ arg6 ## $ ## arg7 ## $, type);
 
 #define MSHookMessage0(_class, arg0) \
     MSHookMessage($ ## _class, @selector(arg0), MSHake(_class ## $ ## arg0))
@@ -202,10 +201,6 @@ static inline Type_ &MSHookIvar(id self, const char *name) {
     MSHookMessage($ ## _class, @selector(arg0:arg1:arg2:arg3:arg4:), MSHake(_class ## $ ## arg0 ## $ ## arg1 ## $ ## arg2 ## $ ## arg3 ## $ ## arg4 ## $))
 #define MSHookMessage6(_class, arg0, arg1, arg2, arg3, arg4, arg5) \
     MSHookMessage($ ## _class, @selector(arg0:arg1:arg2:arg3:arg4:arg5:), MSHake(_class ## $ ## arg0 ## $ ## arg1 ## $ ## arg2 ## $ ## arg3 ## $ ## arg4 ## $ ## arg5 ## $))
-#define MSHookMessage7(_class, arg0, arg1, arg2, arg3, arg4, arg5, arg6) \
-    MSHookMessage($ ## _class, @selector(arg0:arg1:arg2:arg3:arg4:arg5:arg6:), MSHake(_class ## $ ## arg0 ## $ ## arg1 ## $ ## arg2 ## $ ## arg3 ## $ ## arg4 ## $ ## arg5 ## $ ## arg6 ## $))
-#define MSHookMessage8(_class, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) \
-    MSHookMessage($ ## _class, @selector(arg0:arg1:arg2:arg3:arg4:arg5:arg6:arg7:), MSHake(_class ## $ ## arg0 ## $ ## arg1 ## $ ## arg2 ## $ ## arg3 ## $ ## arg4 ## $ ## arg5 ## $ ## arg6 ## $ ## arg7 ## $))
 
 #define MSRegister_(name, dollar, colon) \
     namespace { static class C_$ ## name ## $ ## dollar { public: _finline C_$ ## name ## $ ##dollar() { \
@@ -242,10 +237,6 @@ static inline Type_ &MSHookIvar(id self, const char *name) {
     MSMessage_(extra, type, _class, name, sel0 ## $ ## sel1 ## $ ## sel2 ## $ ## sel3 ## $ ## sel4 ## $, sel0:sel1:sel2:sel3:sel4:, (_cls, _old, _spr, self, _cmd, arg0, arg1, arg2, arg3, arg4), type0 arg0, type1 arg1, type2 arg2, type3 arg3, type4 arg4)
 #define MSMessage6_(extra, type, _class, name, sel0, sel1, sel2, sel3, sel4, sel5, type0, arg0, type1, arg1, type2, arg2, type3, arg3, type4, arg4, type5, arg5) \
     MSMessage_(extra, type, _class, name, sel0 ## $ ## sel1 ## $ ## sel2 ## $ ## sel3 ## $ ## sel4 ## $ ## sel5 ## $, sel0:sel1:sel2:sel3:sel4:sel5:, (_cls, _old, _spr, self, _cmd, arg0, arg1, arg2, arg3, arg4, arg5), type0 arg0, type1 arg1, type2 arg2, type3 arg3, type4 arg4, type5 arg5)
-#define MSMessage7_(extra, type, _class, name, sel0, sel1, sel2, sel3, sel4, sel5, sel6, type0, arg0, type1, arg1, type2, arg2, type3, arg3, type4, arg4, type5, arg5, type6, arg6) \
-    MSMessage_(extra, type, _class, name, sel0 ## $ ## sel1 ## $ ## sel2 ## $ ## sel3 ## $ ## sel4 ## $ ## sel5 ## $ ## sel6 ## $, sel0:sel1:sel2:sel3:sel4:sel5:sel6:, (_cls, _old, _spr, self, _cmd, arg0, arg1, arg2, arg3, arg4, arg5, arg6), type0 arg0, type1 arg1, type2 arg2, type3 arg3, type4 arg4, type5 arg5, type6 arg6)
-#define MSMessage8_(extra, type, _class, name, sel0, sel1, sel2, sel3, sel4, sel5, sel6, sel7, type0, arg0, type1, arg1, type2, arg2, type3, arg3, type4, arg4, type5, arg5, type6, arg6, type7, arg7) \
-    MSMessage_(extra, type, _class, name, sel0 ## $ ## sel1 ## $ ## sel2 ## $ ## sel3 ## $ ## sel4 ## $ ## sel5 ## $ ## sel6 ## $ ## sel7 ## $, sel0:sel1:sel2:sel3:sel4:sel5:sel6:sel7:, (_cls, _old, _spr, self, _cmd, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7), type0 arg0, type1 arg1, type2 arg2, type3 arg3, type4 arg4, type5 arg5, type6 arg6, type7 arg7)
 
 #define MSInstanceMessage0(type, _class, args...) MSMessage0_(MSIgnore_, type, _class *, _class, ## args)
 #define MSInstanceMessage1(type, _class, args...) MSMessage1_(MSIgnore_, type, _class *, _class, ## args)
@@ -254,8 +245,6 @@ static inline Type_ &MSHookIvar(id self, const char *name) {
 #define MSInstanceMessage4(type, _class, args...) MSMessage4_(MSIgnore_, type, _class *, _class, ## args)
 #define MSInstanceMessage5(type, _class, args...) MSMessage5_(MSIgnore_, type, _class *, _class, ## args)
 #define MSInstanceMessage6(type, _class, args...) MSMessage6_(MSIgnore_, type, _class *, _class, ## args)
-#define MSInstanceMessage7(type, _class, args...) MSMessage7_(MSIgnore_, type, _class *, _class, ## args)
-#define MSInstanceMessage8(type, _class, args...) MSMessage8_(MSIgnore_, type, _class *, _class, ## args)
 
 #define MSClassMessage0(type, _class, args...) MSMessage0_(MSIgnore_, type, Class, $ ## _class, ## args)
 #define MSClassMessage1(type, _class, args...) MSMessage1_(MSIgnore_, type, Class, $ ## _class, ## args)
@@ -264,8 +253,6 @@ static inline Type_ &MSHookIvar(id self, const char *name) {
 #define MSClassMessage4(type, _class, args...) MSMessage4_(MSIgnore_, type, Class, $ ## _class, ## args)
 #define MSClassMessage5(type, _class, args...) MSMessage5_(MSIgnore_, type, Class, $ ## _class, ## args)
 #define MSClassMessage6(type, _class, args...) MSMessage6_(MSIgnore_, type, Class, $ ## _class, ## args)
-#define MSClassMessage7(type, _class, args...) MSMessage7_(MSIgnore_, type, Class, $ ## _class, ## args)
-#define MSClassMessage8(type, _class, args...) MSMessage8_(MSIgnore_, type, Class, $ ## _class, ## args)
 
 #define MSInstanceMessageHook0(type, _class, args...) MSMessage0_(MSRegister_, type, _class *, _class, ## args)
 #define MSInstanceMessageHook1(type, _class, args...) MSMessage1_(MSRegister_, type, _class *, _class, ## args)
@@ -274,8 +261,6 @@ static inline Type_ &MSHookIvar(id self, const char *name) {
 #define MSInstanceMessageHook4(type, _class, args...) MSMessage4_(MSRegister_, type, _class *, _class, ## args)
 #define MSInstanceMessageHook5(type, _class, args...) MSMessage5_(MSRegister_, type, _class *, _class, ## args)
 #define MSInstanceMessageHook6(type, _class, args...) MSMessage6_(MSRegister_, type, _class *, _class, ## args)
-#define MSInstanceMessageHook7(type, _class, args...) MSMessage7_(MSRegister_, type, _class *, _class, ## args)
-#define MSInstanceMessageHook8(type, _class, args...) MSMessage8_(MSRegister_, type, _class *, _class, ## args)
 
 #define MSClassMessageHook0(type, _class, args...) MSMessage0_(MSRegister_, type, Class, $ ## _class, ## args)
 #define MSClassMessageHook1(type, _class, args...) MSMessage1_(MSRegister_, type, Class, $ ## _class, ## args)
@@ -284,8 +269,6 @@ static inline Type_ &MSHookIvar(id self, const char *name) {
 #define MSClassMessageHook4(type, _class, args...) MSMessage4_(MSRegister_, type, Class, $ ## _class, ## args)
 #define MSClassMessageHook5(type, _class, args...) MSMessage5_(MSRegister_, type, Class, $ ## _class, ## args)
 #define MSClassMessageHook6(type, _class, args...) MSMessage6_(MSRegister_, type, Class, $ ## _class, ## args)
-#define MSClassMessageHook7(type, _class, args...) MSMessage7_(MSRegister_, type, Class, $ ## _class, ## args)
-#define MSClassMessageHook8(type, _class, args...) MSMessage8_(MSRegister_, type, Class, $ ## _class, ## args)
 
 #define MSOldCall(args...) \
     _old(self, _cmd, ## args)
@@ -341,18 +324,14 @@ static inline void MSHookFunction(MSImageRef image, const char *name, Type_ *rep
 
 #ifdef __ANDROID__
 
-#ifdef __cplusplus
-
-template <typename Type_, typename Kind_, typename ...Args_>
-static inline void MSJavaHookMethod(JNIEnv *jni, jclass _class, jmethodID method, Type_ (*replace)(JNIEnv *, Kind_, Args_...), Type_ (**result)(JNIEnv *, Kind_, ...)) {
+template <typename Type_>
+static inline void MSJavaHookMethod(JNIEnv *jni, jclass _class, jmethodID method, Type_ *replace, Type_ **result) {
     return MSJavaHookMethod(
         jni, _class, method,
         reinterpret_cast<void *>(replace),
         reinterpret_cast<void **>(result)
     );
 }
-
-#endif
 
 static inline void MSAndroidGetPackage(JNIEnv *jni, jobject global, const char *name, jobject &local, jobject &loader) {
     jclass Context(jni->FindClass("android/content/Context"));
@@ -386,9 +365,8 @@ _disused static void MSJavaCleanWeak(void *data, JNIEnv *jni, void *value) {
     _disused static type (*_ ## name)(args); \
     static type $ ## name(args)
 
-#define MSJavaHook(type, name, arg0, args...) \
-    _disused static type (*_ ## name)(JNIEnv *jni, arg0, ...); \
-    static type $ ## name(JNIEnv *jni, arg0, ## args)
+#define MSJavaHook(type, name, args...) \
+    MSHook(type, name, JNIEnv *jni, ## args)
 
 #ifdef __cplusplus
 #define MSHake(name) \
@@ -416,7 +394,6 @@ _disused static void MSJavaCleanWeak(void *data, JNIEnv *jni, void *value) {
 #define MSFilterObjC_Class "Filter:ObjC.Class"
 #endif
 
-#define MSFilterLibrary "Filter:Library"
 #define MSFilterExecutable "Filter:Executable"
 
 #define MSConfig(name, value) \
